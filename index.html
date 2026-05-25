@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>3D Object Play</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    :root {
+      --text: #f5f1ea;
+      --muted: rgba(245, 241, 234, 0.66);
+      --line: rgba(245, 241, 234, 0.16);
+      --panel: rgba(12, 13, 17, 0.78);
+      --accent: #e7c38d;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #090a0d;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body[data-scene="charcoal"] {
+      background:
+        radial-gradient(circle at 50% 22%, rgba(148, 141, 127, 0.18), transparent 34%),
+        linear-gradient(180deg, #17191f 0%, #090a0d 100%);
+    }
+
+    body[data-scene="studio"] {
+      background:
+        radial-gradient(circle at 50% 22%, rgba(191, 201, 198, 0.24), transparent 34%),
+        linear-gradient(180deg, #202528 0%, #0a0c0d 100%);
+    }
+
+    body[data-scene="warm"] {
+      background:
+        radial-gradient(circle at 50% 20%, rgba(218, 171, 111, 0.18), transparent 36%),
+        linear-gradient(180deg, #1d1a17 0%, #0a0a0b 100%);
+    }
+
+    .app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      isolation: isolate;
+    }
+
+    model-viewer {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      --poster-color: transparent;
+    }
+
+    .topbar {
+      position: absolute;
+      top: max(18px, env(safe-area-inset-top));
+      left: max(18px, env(safe-area-inset-left));
+      right: max(18px, env(safe-area-inset-right));
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    h1 {
+      margin: 0 0 7px;
+      font-size: clamp(22px, 3vw, 38px);
+      line-height: 1.08;
+      font-weight: 520;
+      letter-spacing: 0;
+    }
+
+    .subtitle,
+    .status {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .status {
+      max-width: 240px;
+      text-align: right;
+      font-size: 12px;
+    }
+
+    .status[data-state="error"] { color: #f1bcae; }
+
+    .dock {
+      position: absolute;
+      left: 50%;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 4;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      width: min(calc(100vw - 28px), 760px);
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      transform: translateX(-50%);
+    }
+
+    .tools,
+    .models {
+      display: flex;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .models {
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+    }
+
+    .models::-webkit-scrollbar { display: none; }
+
+    button,
+    select {
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      padding: 0;
+      flex: 0 0 auto;
+      font-size: 18px;
+    }
+
+    .model-button {
+      min-width: 112px;
+      padding: 0 14px;
+      color: rgba(245, 241, 234, 0.86);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    button[aria-pressed="true"],
+    .model-button.is-active {
+      border-color: rgba(231, 195, 141, 0.78);
+      background: rgba(231, 195, 141, 0.18);
+      color: #fff8ef;
+    }
+
+    select {
+      width: 112px;
+      padding: 0 28px 0 12px;
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+        linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(100% - 18px) 19px, calc(100% - 13px) 19px;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
+
+    .touch-note {
+      position: absolute;
+      left: max(20px, env(safe-area-inset-left));
+      bottom: calc(max(16px, env(safe-area-inset-bottom)) + 76px);
+      z-index: 2;
+      color: rgba(245, 241, 234, 0.46);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    @media (max-width: 720px) {
+      .topbar { align-items: flex-start; }
+      .status { display: none; }
+      .dock {
+        grid-template-columns: 1fr;
+        width: min(calc(100vw - 22px), 420px);
+      }
+      .tools { justify-content: center; }
+      .models { padding-bottom: 1px; }
+      .model-button { min-width: 104px; }
+      .touch-note { bottom: calc(max(16px, env(safe-area-inset-bottom)) + 126px); }
+    }
+  </style>
+</head>
+<body data-scene="charcoal">
+  <main class="app">
+    <div class="topbar">
+      <div>
+        <h1>3D Object Play</h1>
+        <p class="subtitle">Drag / Pinch / Scroll</p>
+      </div>
+      <div class="status" id="status">Loading model...</div>
+    </div>
+
+    <model-viewer
+      id="viewer"
+      src="assets/models/baked-hand.glb"
+      alt="3D object"
+      auto-rotate
+      auto-rotate-delay="700"
+      rotation-per-second="22deg"
+      camera-controls
+      touch-action="pan-y"
+      interaction-prompt="auto"
+      shadow-intensity="1"
+      shadow-softness="0.72"
+      environment-image="neutral"
+      exposure="1.18"
+      camera-target="auto auto auto"
+      camera-orbit="15deg 68deg auto"
+      min-camera-orbit="auto auto 0.8m"
+      max-camera-orbit="auto auto 96m"
+      field-of-view="32deg"></model-viewer>
+
+    <div class="dock" aria-label="viewer controls">
+      <div class="tools">
+        <button class="icon-button" id="rotate" type="button" aria-label="auto rotate" aria-pressed="true" title="Auto rotate">⟳</button>
+        <button class="icon-button" id="reset" type="button" aria-label="reset camera" title="Reset camera">⌂</button>
+        <button class="icon-button" id="zoomIn" type="button" aria-label="zoom in" title="Zoom in">＋</button>
+        <button class="icon-button" id="zoomOut" type="button" aria-label="zoom out" title="Zoom out">−</button>
+        <select id="scene" aria-label="background">
+          <option value="charcoal">Charcoal</option>
+          <option value="studio">Studio</option>
+          <option value="warm">Warm</option>
+        </select>
+      </div>
+      <div class="models" id="models" aria-label="model list"></div>
+    </div>
+
+    <div class="touch-note">Select objects below</div>
+  </main>
+
+  <script>
+    const models = [
+      { name: "Baked Hand", file: "assets/models/baked-hand.glb" },
+      { name: "Hand Draft", file: "assets/models/hand-draft.glb" },
+      { name: "Blue Car", file: "assets/models/blue-car.glb" },
+      { name: "Project", file: "assets/models/project-small.glb" }
+    ];
+
+    const viewer = document.querySelector("#viewer");
+    const status = document.querySelector("#status");
+    const rotate = document.querySelector("#rotate");
+    const reset = document.querySelector("#reset");
+    const zoomIn = document.querySelector("#zoomIn");
+    const zoomOut = document.querySelector("#zoomOut");
+    const scene = document.querySelector("#scene");
+    const modelList = document.querySelector("#models");
+
+    const setStatus = (text, state = "") => {
+      status.textContent = text;
+      status.dataset.state = state;
+    };
+
+    const orbitParts = () => {
+      const orbit = viewer.getCameraOrbit();
+      return { theta: orbit.theta, phi: orbit.phi, radius: orbit.radius };
+    };
+
+    const setRadius = (nextRadius) => {
+      const orbit = orbitParts();
+      const meters = Math.min(96, Math.max(0.8, nextRadius));
+      viewer.cameraOrbit = orbit.theta + "rad " + orbit.phi + "rad " + meters + "m";
+    };
+
+    const setActiveButton = (file) => {
+      modelList.querySelectorAll("button").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.file === file);
+      });
+    };
+
+    const loadModel = (model) => {
+      viewer.src = model.file;
+      viewer.cameraTarget = "auto auto auto";
+      viewer.cameraOrbit = "15deg 68deg auto";
+      viewer.fieldOfView = "32deg";
+      setStatus("Loading " + model.name + "...");
+      setActiveButton(model.file);
+    };
+
+    models.forEach((model) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "model-button";
+      button.textContent = model.name;
+      button.dataset.file = model.file;
+      button.addEventListener("click", () => loadModel(model));
+      modelList.appendChild(button);
+    });
+
+    setActiveButton(models[0].file);
+
+    viewer.addEventListener("load", () => {
+      const active = models.find((model) => model.file === viewer.getAttribute("src"));
+      setStatus(active ? active.name : "Ready");
+    });
+
+    viewer.addEventListener("error", () => {
+      setStatus("Model could not be loaded", "error");
+    });
+
+    rotate.addEventListener("click", () => {
+      viewer.autoRotate = !viewer.autoRotate;
+      rotate.setAttribute("aria-pressed", String(viewer.autoRotate));
+    });
+
+    reset.addEventListener("click", () => {
+      viewer.cameraTarget = "auto auto auto";
+      viewer.cameraOrbit = "15deg 68deg auto";
+      viewer.fieldOfView = "32deg";
+      viewer.jumpCameraToGoal();
+    });
+
+    zoomIn.addEventListener("click", () => { setRadius(orbitParts().radius * 0.78); });
+    zoomOut.addEventListener("click", () => { setRadius(orbitParts().radius * 1.24); });
+
+    scene.addEventListener("change", () => {
+      document.body.dataset.scene = scene.value;
+    });
+  </script>
+</body>
+</html>
